@@ -48,12 +48,17 @@ export function RulesModal({ round }: { round: number }) {
       <ul className="list-disc space-y-2 pl-5">
         <li>Você vê a carta de todos os outros jogadores. A sua fica oculta.</li>
         <li>
-          Na sua vez, faça <strong className="text-foreground">uma</strong> pergunta de sim ou não pelo Discord e
-          clique em <strong className="text-foreground">Próximo</strong>.
+          No início da sua vez, escolha <strong className="text-foreground">pergunta</strong> ou{" "}
+          <strong className="text-foreground">palpite</strong>. Todos veem a escolha; não dá para trocar até passar a
+          vez.
         </li>
         <li>
-          Ou arrisque um palpite no campo de texto. Acertou? Você sai da fila e marca sua posição. Errou? A vez passa
-          automaticamente, sem eliminação.
+          Modo pergunta: faça uma pergunta de sim ou não pelo Discord e clique em{" "}
+          <strong className="text-foreground">Próximo</strong>. Não pode palpitar na mesma vez.
+        </li>
+        <li>
+          Modo palpite: envie a resposta completa no site, sem fazer perguntas no Discord nesta vez. Acertou? Você sai
+          da fila. Errou? A vez passa automaticamente, sem eliminação.
         </li>
         <li>Acentos, maiúsculas, espaços e pontuação não importam, mas o palpite precisa ser a resposta completa.</li>
         <li>A partida termina quando sobra um jogador adivinhando. No fim, o ranking mostra a ordem de acertos.</li>

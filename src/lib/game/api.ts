@@ -8,6 +8,7 @@ import type {
   Room,
   RoomSnapshot,
   TurnEvent,
+  TurnMode,
 } from "./types";
 
 const EVENTS_LIMIT = 40;
@@ -64,6 +65,21 @@ export async function kickPlayer(supabase: SupabaseClient, roomId: string, playe
 
 export async function startGame(supabase: SupabaseClient, roomId: string) {
   unwrap(await supabase.rpc("start_game", { p_room_id: roomId }));
+}
+
+export async function chooseTurnMode(
+  supabase: SupabaseClient,
+  roomId: string,
+  turnVersion: number,
+  mode: TurnMode,
+) {
+  unwrap(
+    await supabase.rpc("choose_turn_mode", {
+      p_room_id: roomId,
+      p_turn_version: turnVersion,
+      p_mode: mode,
+    }),
+  );
 }
 
 export async function advanceTurn(supabase: SupabaseClient, roomId: string, turnVersion: number) {

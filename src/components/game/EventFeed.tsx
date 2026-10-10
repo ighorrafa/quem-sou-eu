@@ -7,6 +7,10 @@ function describe(event: TurnEvent, byId: Map<string, Player>): string | null {
   switch (event.kind) {
     case "start":
       return `A partida começou. ${name ?? "Alguém"} joga primeiro.`;
+    case "mode_question":
+      return `${name} escolheu fazer uma pergunta nesta vez.`;
+    case "mode_guess":
+      return `${name} escolheu palpitar (sem perguntas nesta vez).`;
     case "pass":
       return `${name} fez uma pergunta e passou a vez.`;
     case "guess_wrong":
@@ -34,16 +38,18 @@ export function EventFeed({ events, players }: { events: TurnEvent[]; players: P
   }
 
   return (
-    <ol className="flex max-h-72 flex-col gap-1.5 overflow-y-auto pr-1 text-sm" aria-live="polite">
+    <ol className="flex max-h-64 flex-col gap-2 overflow-y-auto pr-1 text-sm" aria-live="polite">
       {items.map((item) => (
         <li
           key={item.id}
-          className={`rounded-lg px-3 py-1.5 ${
+          className={`border-l-2 py-1 pl-3 ${
             item.kind === "guess_right"
-              ? "bg-success/10 text-success"
+              ? "border-success text-success"
               : item.kind === "guess_wrong"
-                ? "bg-danger/10 text-foreground"
-                : "bg-background/40 text-muted"
+                ? "border-danger/70 text-foreground"
+                : item.kind === "mode_guess" || item.kind === "mode_question"
+                  ? "border-accent text-accent-strong"
+                  : "border-border text-muted"
           }`}
         >
           {item.text}

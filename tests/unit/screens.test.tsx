@@ -43,7 +43,12 @@ function player(id: string, overrides: Partial<Player> = {}): Player {
   };
 }
 
-function snapshot(partial: Partial<RoomSnapshot> & { status: RoomSnapshot["room"]["status"] }): RoomSnapshot {
+function snapshot(
+  partial: Partial<RoomSnapshot> & {
+    status: RoomSnapshot["room"]["status"];
+    turn_mode?: RoomSnapshot["room"]["turn_mode"];
+  },
+): RoomSnapshot {
   return {
     room: {
       id: "room-1",
@@ -52,6 +57,7 @@ function snapshot(partial: Partial<RoomSnapshot> & { status: RoomSnapshot["room"
       status: partial.status,
       round: 1,
       turn_version: partial.status === "lobby" ? 0 : 3,
+      turn_mode: partial.status === "playing" ? (partial.turn_mode ?? null) : null,
       current_player_id: partial.status === "playing" ? "a" : null,
       created_at: now,
       started_at: partial.status === "lobby" ? null : now,
@@ -160,6 +166,7 @@ describe("GameBoard", () => {
   ];
 
   it("mostra os controles só para o jogador da vez e esconde a própria carta", () => {
+    window.localStorage.setItem("qse:rules-seen", "1");
     const { client } = fakeSupabase();
     render(
       <GameBoard
@@ -172,8 +179,8 @@ describe("GameBoard", () => {
       />,
     );
     expect(screen.getByText("É a sua vez!")).toBeTruthy();
-    expect(screen.getByLabelText("Palpite")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Próximo/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fazer uma pergunta" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Palpitar agora" })).toBeTruthy();
     expect(screen.getByText("Só os outros veem a resposta")).toBeTruthy();
     expect(screen.getByText("Resposta de B")).toBeTruthy();
     expect(screen.getByText("Resposta de C")).toBeTruthy();
@@ -245,7 +252,7 @@ describe("GameBoard", () => {
     render(
       <GameBoard
         supabase={client}
-        snapshot={snapshot({ status: "playing", players, cards, assignments })}
+        snapshot={snapshot({ status: "playing", players, cards, assignments, turn_mode: "guess" })}
         me={players[0]}
         isHost={false}
         imageUrls={{}}

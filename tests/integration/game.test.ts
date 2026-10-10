@@ -63,6 +63,19 @@ async function currentUser(roomId: string): Promise<{ userId: string; playerId: 
   return { userId: player.user_id, playerId: player.id, version: room.turn_version };
 }
 
+async function chooseMode(
+  userId: string,
+  roomId: string,
+  version: number,
+  mode: "question" | "guess",
+): Promise<void> {
+  await rpcScalar(db.admin, userId, "choose_turn_mode", {
+    p_room_id: roomId,
+    p_turn_version: version,
+    p_mode: mode,
+  });
+}
+
 describe("normalize_answer (SQL) espelha normalizeAnswer (TS)", () => {
   it("produz o mesmo resultado para entradas variadas", async () => {
     const samples = ["Albert Einstein", "  SÃO   PAULO! ", "Pokémon: Go", "Spider-Man", "Copa de 2002", "Ñandú açaí"];
@@ -237,6 +250,11 @@ describe("partida", () => {
       rpcScalar(db.admin, seeded.users.find((u) => u !== turn.userId)!, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: turn.version }),
       "not_your_turn",
     );
+    await expectError(
+      rpcScalar(db.admin, turn.userId, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: turn.version }),
+      "turn_mode_required",
+    );
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "question");
     await rpcScalar(db.admin, turn.userId, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: turn.version });
     let room = await roomRow(seeded.roomId);
     expect(room.turn_version).toBe(2);
@@ -251,6 +269,7 @@ describe("partida", () => {
 
     // 2) Palpite errado avança automaticamente.
     const wrongGuesser = turn.playerId;
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "guess");
     const wrong = await rpcScalar<{ correct: boolean }>(db.admin, turn.userId, "submit_guess", {
       p_room_id: seeded.roomId,
       p_turn_version: turn.version,
@@ -270,6 +289,7 @@ describe("partida", () => {
     turn = await currentUser(seeded.roomId);
     const winnerId = turn.playerId;
     const answer = await answerFor(winnerId);
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "guess");
     const right = await rpcScalar<{ correct: boolean; position: number; finished: boolean }>(db.admin, turn.userId, "submit_guess", {
       p_room_id: seeded.roomId,
       p_turn_version: turn.version,
@@ -299,17 +319,20 @@ describe("partida", () => {
     // 4) A fila alterna só entre os dois restantes.
     turn = await currentUser(seeded.roomId);
     const a = turn.playerId;
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "question");
     await rpcScalar(db.admin, turn.userId, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: turn.version });
     turn = await currentUser(seeded.roomId);
     const b = turn.playerId;
     expect(b).not.toBe(a);
     expect(b).not.toBe(winnerId);
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "question");
     await rpcScalar(db.admin, turn.userId, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: turn.version });
     turn = await currentUser(seeded.roomId);
     expect(turn.playerId).toBe(a);
 
     // 5) Segundo acerto: o último restante fecha o ranking e a partida termina.
     const secondAnswer = await answerFor(turn.playerId);
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "guess");
     const final = await rpcScalar<{ correct: boolean; position: number; finished: boolean }>(db.admin, turn.userId, "submit_guess", {
       p_room_id: seeded.roomId,
       p_turn_version: turn.version,
@@ -340,7 +363,22 @@ describe("partida", () => {
     const kinds = (await db.admin.query("select kind from public.turn_events where room_id = $1 order by id", [seeded.roomId])).rows.map(
       (r) => r.kind,
     );
-    expect(kinds).toEqual(["start", "pass", "guess_wrong", "guess_right", "pass", "pass", "guess_right", "finish"]);
+    expect(kinds).toEqual([
+      "start",
+      "mode_question",
+      "pass",
+      "mode_guess",
+      "guess_wrong",
+      "mode_guess",
+      "guess_right",
+      "mode_question",
+      "pass",
+      "mode_question",
+      "pass",
+      "mode_guess",
+      "guess_right",
+      "finish",
+    ]);
 
     // 6) Reinício: volta ao lobby, descarta cartas e desmarca prontos.
     await expectError(rpcScalar(db.admin, seeded.users[1], "restart_game", { p_room_id: seeded.roomId }), "not_host");
@@ -358,10 +396,47 @@ describe("partida", () => {
     expect(readyLeft.rows[0].n).toBe(0);
   });
 
+  it("exige modo da vez e impede misturar pergunta com palpite no mesmo turno", async () => {
+    const seeded = await seedRoom(2, ["Um", "Dois"]);
+    await rpcScalar(db.admin, seeded.users[0], "start_game", { p_room_id: seeded.roomId });
+    const turn = await currentUser(seeded.roomId);
+
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "question");
+    await expectError(
+      rpcScalar(db.admin, turn.userId, "submit_guess", {
+        p_room_id: seeded.roomId,
+        p_turn_version: turn.version,
+        p_guess: "chute",
+      }),
+      "wrong_turn_mode",
+    );
+    await expectError(
+      rpcScalar(db.admin, turn.userId, "choose_turn_mode", {
+        p_room_id: seeded.roomId,
+        p_turn_version: turn.version,
+        p_mode: "guess",
+      }),
+      "turn_mode_already_set",
+    );
+    await rpcScalar(db.admin, turn.userId, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: turn.version });
+
+    const next = await currentUser(seeded.roomId);
+    await chooseMode(next.userId, seeded.roomId, next.version, "guess");
+    await expectError(
+      rpcScalar(db.admin, next.userId, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: next.version }),
+      "wrong_turn_mode",
+    );
+  });
+
   it("não permite palpite vazio e nunca revela a resposta no retorno", async () => {
     const seeded = await seedRoom(2, ["Segredo Um", "Segredo Dois"]);
     await rpcScalar(db.admin, seeded.users[0], "start_game", { p_room_id: seeded.roomId });
     const turn = await currentUser(seeded.roomId);
+    await expectError(
+      rpcScalar(db.admin, turn.userId, "submit_guess", { p_room_id: seeded.roomId, p_turn_version: turn.version, p_guess: "..." }),
+      "turn_mode_required",
+    );
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "guess");
     await expectError(
       rpcScalar(db.admin, turn.userId, "submit_guess", { p_room_id: seeded.roomId, p_turn_version: turn.version, p_guess: "..." }),
       "invalid_guess",
@@ -387,6 +462,8 @@ describe("concorrência", () => {
   it("dois cliques em Próximo avançam a vez uma única vez", async () => {
     const seeded = await seedRoom(3);
     await rpcScalar(db.admin, seeded.users[0], "start_game", { p_room_id: seeded.roomId });
+    const turn = await currentUser(seeded.roomId);
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "question");
 
     const { results, versionBefore } = await race(seeded, [
       (c, u, v) => rpcScalar(c, u, "advance_turn", { p_room_id: seeded.roomId, p_turn_version: v }),
@@ -408,6 +485,8 @@ describe("concorrência", () => {
   it("palpite e Próximo simultâneos: apenas uma ação vale", async () => {
     const seeded = await seedRoom(3);
     await rpcScalar(db.admin, seeded.users[0], "start_game", { p_room_id: seeded.roomId });
+    const turn = await currentUser(seeded.roomId);
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "question");
 
     const { results, versionBefore } = await race(seeded, [
       (c, u, v) => rpcScalar(c, u, "submit_guess", { p_room_id: seeded.roomId, p_turn_version: v, p_guess: "chute" }),
@@ -428,6 +507,7 @@ describe("concorrência", () => {
     const seeded = await seedRoom(3);
     await rpcScalar(db.admin, seeded.users[0], "start_game", { p_room_id: seeded.roomId });
     const turn = await currentUser(seeded.roomId);
+    await chooseMode(turn.userId, seeded.roomId, turn.version, "guess");
     await rpcScalar(db.admin, turn.userId, "submit_guess", { p_room_id: seeded.roomId, p_turn_version: turn.version, p_guess: "um" });
     await expectError(
       rpcScalar(db.admin, turn.userId, "submit_guess", { p_room_id: seeded.roomId, p_turn_version: turn.version, p_guess: "dois" }),

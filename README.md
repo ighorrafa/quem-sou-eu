@@ -14,7 +14,7 @@ Jogo online multiplayer inspirado no clássico "Quem sou eu?": cada jogador envi
 flowchart LR
   Browser[Navegador] -->|RPC create_room / join_room / upsert_card / set_ready| Postgres[(Supabase Postgres)]
   Browser -->|upload da imagem| Storage[Supabase Storage privado]
-  Browser -->|RPC start_game / advance_turn / submit_guess / restart_game| Postgres
+  Browser -->|RPC start_game / choose_turn_mode / advance_turn / submit_guess / restart_game| Postgres
   Postgres -->|Realtime postgres_changes filtrado por RLS| Browser
   Vercel[Vercel Cron diário] -->|/api/cleanup com service_role| Postgres
   Vercel --> Storage
@@ -25,7 +25,7 @@ flowchart LR
 - No lobby, cada jogador envia imagem + resposta e marca **Pronto**. O anfitrião inicia quando todos estiverem prontos (mínimo 2, máximo 12).
 - `start_game` sorteia a ordem de turno e distribui as cartas em anel aleatório: ninguém recebe a própria carta.
 - O RLS impede que o jogador leia a carta (título e imagem) atribuída a ele até acertar. Isso vale para consultas, Realtime e URLs assinadas do Storage.
-- Cada turno tem uma versão. `advance_turn` e `submit_guess` exigem a versão atual e o jogador da vez, então cliques duplos ou ações simultâneas só valem uma vez.
+- Cada turno tem uma versão. No início da vez o jogador escolhe `question` ou `guess` (`choose_turn_mode`); `advance_turn` só no modo pergunta e `submit_guess` só no modo palpite. As RPCs exigem a versão atual e o jogador da vez, então cliques duplos ou ações simultâneas só valem uma vez.
 - Palpites são comparados no banco ignorando maiúsculas, acentos, espaços e pontuação. O cliente só recebe `correct: true/false`.
 - Quando sobra um único jogador adivinhando, ele fecha o ranking e a partida termina. O anfitrião pode iniciar uma nova rodada (todos reenviam cartas).
 - Salas expiram 24 horas após a última partida; o cron diário apaga as salas expiradas e as imagens.

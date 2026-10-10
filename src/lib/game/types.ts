@@ -1,5 +1,7 @@
 export type RoomStatus = "lobby" | "playing" | "finished";
 
+export type TurnMode = "question" | "guess";
+
 export type Room = {
   id: string;
   code: string;
@@ -7,6 +9,7 @@ export type Room = {
   status: RoomStatus;
   round: number;
   turn_version: number;
+  turn_mode: TurnMode | null;
   current_player_id: string | null;
   created_at: string;
   started_at: string | null;
@@ -42,7 +45,15 @@ export type Assignment = {
   card_id: string;
 };
 
-export type TurnEventKind = "start" | "pass" | "guess_wrong" | "guess_right" | "finish" | "restart";
+export type TurnEventKind =
+  | "start"
+  | "pass"
+  | "guess_wrong"
+  | "guess_right"
+  | "finish"
+  | "restart"
+  | "mode_question"
+  | "mode_guess";
 
 export type TurnEvent = {
   id: number;
